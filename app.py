@@ -25,13 +25,53 @@ except FileNotFoundError:
 if 'inventario' not in st.session_state:
     st.session_state.inventario = pd.DataFrame(columns=['PROYECTO', 'CÓDIGO', 'DESCRIPCIÓN', 'VALORIZADO', 'CANTIDAD'])
 
+# === NUEVO: BARRA LATERAL PARA GUARDAR Y RECUPERAR AVANCE ===
+with st.sidebar:
+    st.header("💾 Guardar / Retomar Avance")
+    st.write("Usa estas opciones para no perder tu progreso si cierras la ventana.")
+    
+    # Botón para descargar el avance actual
+    if not st.session_state.inventario.empty:
+        # Convertimos la tabla actual a un archivo CSV en memoria
+        csv_avance = st.session_state.inventario.to_csv(index=False).encode('utf-8-sig')
+        
+        st.download_button(
+            label="⬇️ Descargar mi avance actual",
+            data=csv_avance,
+            file_name="Mi_Avance_Costo_Corte.csv",
+            mime="text/csv",
+            type="primary",
+            help="Descarga un archivo con tu progreso actual para poder retomarlo después."
+        )
+    else:
+        st.info("Agrega materiales para poder guardar tu avance.")
+
+    st.divider()
+    
+    # Zona para subir un avance anterior
+    st.subheader("📂 Retomar un trabajo")
+    archivo_subido = st.file_uploader("Sube tu archivo 'Mi_Avance_Costo_Corte.csv'", type=["csv"])
+    
+    if archivo_subido is not None:
+        if st.button("🔄 Cargar materiales de este archivo"):
+            try:
+                df_recuperado = pd.read_csv(archivo_subido)
+                # Forzar que el código sea texto para evitar errores de formato
+                df_recuperado['CÓDIGO'] = df_recuperado['CÓDIGO'].astype(str)
+                # Reemplazar el inventario actual con el recuperado
+                st.session_state.inventario = df_recuperado
+                st.success("¡Avance recuperado con éxito!")
+                st.rerun() # Refrescar la pantalla
+            except Exception as e:
+                st.error("Error al leer el archivo. Asegúrate de que sea el archivo correcto.")
+
 # 3. Creación de Pestañas
 tab1, tab2, tab3 = st.tabs(["📝 1. Agregar Materiales", "📋 2. Ver Inventario", "🧮 3. Calculadora y Exportación"])
 
 # === PESTAÑA 1: REGISTRAR ===
 with tab1:
     st.subheader("Datos del Proyecto")
-    proyecto_actual = st.text_input("Nombre del Proyecto (Ej: Reconexión 001 - Electrodunas):", value="Proyecto A").strip().upper()
+    proyecto_actual = st.text_input("Nombre del Proyecto (Ej: Reconexión 001):", value="Proyecto A").strip().upper()
     
     st.divider()
     
@@ -51,7 +91,6 @@ with tab1:
         else:
             detalle = df_materiales[df_materiales['BUSCADOR'] == material_seleccionado].iloc[0]
             
-            # --- VALIDACIÓN DE DUPLICADOS ---
             ya_existe = st.session_state.inventario[
                 (st.session_state.inventario['PROYECTO'] == proyecto_actual) & 
                 (st.session_state.inventario['CÓDIGO'] == detalle['CÓDIGO'])
@@ -86,7 +125,6 @@ with tab1:
         if not proyecto_actual:
             st.warning("⚠️ Debes ingresar un nombre de proyecto.")
         elif nueva_desc.strip() != "":
-            # --- VALIDACIÓN DE DUPLICADOS MANUALES ---
             ya_existe_manual = st.session_state.inventario[
                 (st.session_state.inventario['PROYECTO'] == proyecto_actual) & 
                 (st.session_state.inventario['DESCRIPCIÓN'] == nueva_desc.strip())
@@ -195,13 +233,9 @@ with tab3:
             # --- CREAR EXCEL SEPARADO POR PROYECTO ---
             buffer_proyectos = io.BytesIO()
             with pd.ExcelWriter(buffer_proyectos, engine='xlsxwriter') as writer:
-                # Escribimos una pestaña en el Excel por cada proyecto seleccionado
                 for proy in proyectos_a_sumar:
                     df_proy = df_filtrado[df_filtrado['PROYECTO'] == proy].drop(columns=['PROYECTO'])
-                    
-                    # Excel solo permite 31 caracteres para el nombre de la hoja, así que lo cortamos por si acaso
                     nombre_hoja = str(proy)[:31]
-                    
                     df_proy.to_excel(writer, index=False, sheet_name=nombre_hoja)
                     worksheet = writer.sheets[nombre_hoja]
                     worksheet.set_column('A:A', 15)
@@ -209,7 +243,6 @@ with tab3:
                     worksheet.set_column('C:C', 15)
                     worksheet.set_column('D:D', 15)
 
-            # --- MOSTRAR BOTONES DE DESCARGA LADO A LADO ---
             st.divider()
             col_btn1, col_btn2 = st.columns(2)
             
